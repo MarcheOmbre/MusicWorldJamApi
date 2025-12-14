@@ -22,7 +22,7 @@ public static class PasswordHelper
 
     public static byte[] GetPasswordHash(IConfiguration configuration, string password, byte[] salt)
     {
-        var secretKey = configuration["AppSettings:SecretKey"] ?? throw new Exception("No secret found");
+        var secretKey = configuration["AppSettings:SecretKey"] ?? throw new Exception("No secret defined");
 
         // Add secret
         var secretKeyPlusSalt = secretKey + Convert.ToBase64String(salt);

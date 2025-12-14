@@ -14,7 +14,7 @@ public static class TokenHelper
     
     internal static string CreateToken(IConfiguration configuration,int value, User.RoleMap role, TimeSpan timeSpan)
     {
-        var tokenSecretKey = configuration["AppSettings:JWTSecret"] ?? throw new Exception("No JWTSecret found");
+        var tokenSecretKey = configuration["AppSettings:JWTSecret"] ?? throw new Exception("No JWTSecret not defined");
 
         // Create claims
         var claims = new Claim[]
