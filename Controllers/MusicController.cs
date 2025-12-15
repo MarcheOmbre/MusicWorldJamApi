@@ -145,7 +145,7 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetGroupMusics(int groupId)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
 
         var musics = new List<Music>();
@@ -165,7 +165,7 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetAll()
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
 
         return Ok(userRepository.GetAll<Music>(null));
@@ -176,7 +176,7 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetComments(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Music>(id, out _))
@@ -195,7 +195,7 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult AddComment(CommentMusicDto commentMusicDto)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Music>(commentMusicDto.MusicId, out var music))
@@ -230,13 +230,14 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult RemoveComment(int commentId)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out var tokenUserRole))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
+            !userRepository.TryGetById<User>(tokenUserId, out var user))
             return Unauthorized();
         
         if(!userRepository.TryGetById<MusicComment>(commentId, out var comment))
             return BadRequest("Comment not found");
         
-        if(tokenUserRole != Models.User.RoleMap.Admin && comment.UserId != tokenUserId)
+        if(user.Role != Models.User.RoleMap.Admin && comment.UserId != tokenUserId)
             return BadRequest("You are not the owner of this comment");
         
         if(!userRepository.Remove<MusicComment>(commentId) || !userRepository.SaveChanges())
@@ -250,8 +251,8 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Delete(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out var tokenUserRole) ||
-            !userRepository.TryGetById<User>(tokenUserId, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) ||
+            !userRepository.TryGetById<User>(tokenUserId, out var user))
             return Unauthorized();
 
         var userId = tokenUserId;
@@ -261,7 +262,7 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
         if (!userRepository.TryGetById<Group>(music.GroupId, out var group))
             throw new Exception("Group not found");
         
-        if (tokenUserRole != Models.User.RoleMap.Admin)
+        if (user.Role != Models.User.RoleMap.Admin)
         { 
              if(group.UserId != userId)
                 return BadRequest("You are not the owner of this music");

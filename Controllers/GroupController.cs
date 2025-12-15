@@ -97,7 +97,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetUserGroups(int userId)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
 
         var groups = new List<Group>();
@@ -116,7 +116,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetAll()
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
         
         return Ok(userRepository.GetAll<Group>(null));
@@ -127,7 +127,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetMembers(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
         
         var memberIds = userRepository.GetAll<UserGroupJoin>(x => x.GroupId == id).Select(x => x.UserId).ToList();
@@ -151,7 +151,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetComments(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Group>(id, out _))
@@ -173,7 +173,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (string.IsNullOrWhiteSpace(groupDto.Name))
             return BadRequest("Group name is empty");
         
-        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
 
         var groups = userRepository.GetAll<Group>(null);
@@ -208,7 +208,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult SendInvitation(int groupId, int userId)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Group>(groupId, out var group))
@@ -238,7 +238,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult AddComment(CommentGroupDto commentGroupDto)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Group>(commentGroupDto.GroupId, out var music))
@@ -273,7 +273,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult AcceptInvitation(int groupId)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Group>(groupId, out _))
@@ -304,13 +304,14 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult RemoveComment(int commentId)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out var tokenUserRole))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
+            !userRepository.TryGetById<User>(tokenUserId, out var user))
             return Unauthorized();
         
         if(!userRepository.TryGetById<GroupComment>(commentId, out var comment))
             return BadRequest("Comment not found");
         
-        if(tokenUserRole != Models.User.RoleMap.Admin && comment.UserId != tokenUserId)
+        if(user.Role != Models.User.RoleMap.Admin && comment.UserId != tokenUserId)
             return BadRequest("You are not the owner of this comment");
         
         if(!userRepository.Remove<GroupComment>(commentId) || !userRepository.SaveChanges())
@@ -324,14 +325,15 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Delete(int id)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out var tokenUserRole))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
+            !userRepository.TryGetById<User>(tokenUserId, out var user))
             return Unauthorized();
-
+        
         var userId = tokenUserId;
         if(!userRepository.TryGetById<Group>(id, out var group))
             return NotFound("Group not found");
 
-        if (tokenUserRole != Models.User.RoleMap.Admin)
+        if (user.Role != Models.User.RoleMap.Admin)
         {
             if (group.UserId != userId)
             {
@@ -350,7 +352,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult DeleteMember(int memberId, int id)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Group>(id, out var group))

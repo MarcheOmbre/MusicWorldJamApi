@@ -12,16 +12,12 @@ public static class TokenHelper
     private const string UserKey = "UserId";
     private const string RoleKey = "Role";
     
-    internal static string CreateToken(IConfiguration configuration,int value, User.RoleMap role, TimeSpan timeSpan)
+    internal static string CreateToken(IConfiguration configuration,int value, TimeSpan timeSpan)
     {
         var tokenSecretKey = configuration["AppSettings:JWTSecret"] ?? throw new Exception("No JWTSecret not defined");
 
         // Create claims
-        var claims = new Claim[]
-        {
-            new(UserKey, value.ToString()),
-            new(RoleKey, role.ToString())
-        };
+        var claims = new Claim[] { new(UserKey, value.ToString()) };
 
         // Crete a security key from the secret key
         var tokenKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(tokenSecretKey));
@@ -44,10 +40,9 @@ public static class TokenHelper
         return jwtSecurityTokenHandler.WriteToken(jwtSecurityTokenHandler.CreateToken(securityTokenDescriptor));
     }
     
-    internal static bool CheckToken(ClaimsPrincipal? claimsPrincipal, IUserRepository userRepository, out int id, out User.RoleMap role)
+    internal static bool CheckToken(ClaimsPrincipal? claimsPrincipal, IUserRepository userRepository, out int id)
     {
         id = -1;
-        role = User.RoleMap.None;
         
         var claimsIdentity = claimsPrincipal?.Identity as ClaimsIdentity;
         if(claimsIdentity is null)
@@ -55,10 +50,6 @@ public static class TokenHelper
         
         var idClaims = claimsIdentity.Claims.FirstOrDefault(x => x.Type == UserKey);
         if(idClaims is null || !int.TryParse(idClaims.Value, out id))
-            return false;
-        
-        var roleClaims = claimsIdentity.Claims.FirstOrDefault(x => x.Type == RoleKey);
-        if(roleClaims is null || !Enum.TryParse(roleClaims.Value, out role))
             return false;
         
         return userRepository.TryGetById<AuthentificationUser>(id, out _);

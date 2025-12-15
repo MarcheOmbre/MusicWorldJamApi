@@ -21,10 +21,10 @@ public class AuthentificationController(IConfiguration configuration, IUserRepos
     [HttpGet("RefreshToken")]
     public IActionResult RefreshToken()
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var userId, out var userRole))
+        if (!TokenHelper.CheckToken(User, userRepository, out var userId))
             return Unauthorized();
 
-        return Ok(TokenHelper.CreateToken(configuration, userId, userRole, LoginTokenTimeSpan));
+        return Ok(TokenHelper.CreateToken(configuration, userId, LoginTokenTimeSpan));
     }
 
     #endregion
@@ -114,7 +114,7 @@ public class AuthentificationController(IConfiguration configuration, IUserRepos
                 if (!userRepository.TryGetById<User>(userAuthentification.Id, out var user))
                     return BadRequest("User not found");
 
-                return Ok(TokenHelper.CreateToken(configuration, user.Id, user.Role, LoginTokenTimeSpan));
+                return Ok(TokenHelper.CreateToken(configuration, user.Id, LoginTokenTimeSpan));
             }
         }
 
@@ -133,7 +133,7 @@ public class AuthentificationController(IConfiguration configuration, IUserRepos
         var userAuthentification = userRepository.Get<AuthentificationUser>(x => x.Email == email);
         if (userAuthentification != null && userRepository.TryGetById<User>(userAuthentification.Id, out var user))
         {
-            var token = TokenHelper.CreateToken(configuration, user.Id, user.Role, PasswordForgotTokenTimeSpan);
+            var token = TokenHelper.CreateToken(configuration, user.Id, PasswordForgotTokenTimeSpan);
             
             // Send mail
             EmailHelper.SendEmail(configuration, email, "Subject", token);

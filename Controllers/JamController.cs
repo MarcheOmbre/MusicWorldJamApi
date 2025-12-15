@@ -22,7 +22,7 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Get(int id)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Jam>(id, out var jam))
@@ -36,7 +36,7 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetAll()
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
         
         return Ok(userRepository.GetAll<Jam>(null));
@@ -47,7 +47,7 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetGroups(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
 
         if (!userRepository.TryGetById<Jam>(id, out _))
@@ -62,7 +62,7 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetMusics(int jamId)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
 
         if (!userRepository.TryGetById<Jam>(jamId, out _))
@@ -82,7 +82,11 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Create(CreateJamDto createJamDto)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out _, out var tokenUserRole) || tokenUserRole != Models.User.RoleMap.Admin)
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
+            !userRepository.TryGetById<User>(tokenUserId, out var user))
+            return Unauthorized();
+        
+        if(user.Role != Models.User.RoleMap.Admin)
             return Unauthorized();
         
         if(string.IsNullOrWhiteSpace(createJamDto.Title))
@@ -114,7 +118,7 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Subscribe(int id, int groupId)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Jam>(id, out var jam))
@@ -144,7 +148,7 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Upload(UploadToJamDto uploadToJamDto)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Jam>(uploadToJamDto.JamId, out var jam))
@@ -171,7 +175,7 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Note(NotationDto notationDto)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
         if(!userRepository.TryGetById<Jam>(notationDto.JamId, out var jam))
@@ -226,7 +230,11 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Delete(int id)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out _, out var tokenUserRole) || tokenUserRole != Models.User.RoleMap.Admin)
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
+            !userRepository.TryGetById<User>(tokenUserId, out var user))
+            return Unauthorized();
+        
+        if(user.Role != Models.User.RoleMap.Admin)
             return Unauthorized();
         
         var joinGroupsToDelete = userRepository.GetAll<JamGroupJoin>(x => x.JamId == id);

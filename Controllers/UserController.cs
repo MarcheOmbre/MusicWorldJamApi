@@ -50,7 +50,7 @@ public class UserController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Get(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
 
         if (!userRepository.TryGetById<User>(id, out var user))
@@ -70,7 +70,7 @@ public class UserController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetAll()
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _, out _))
+        if (!TokenHelper.CheckToken(User, userRepository, out _))
             return Unauthorized();
 
         var getUsersDtos = userRepository.GetAll<User>(null).Select(x => new GetUserDto
@@ -96,13 +96,11 @@ public class UserController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
     public IActionResult Delete(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId, out var tokenRoleId))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
+            !userRepository.TryGetById<User>(tokenUserId, out var user))
             return Unauthorized();
         
-        if (!userRepository.TryGetById<User>(id, out var user))
-            return BadRequest("User not found");
-        
-        if (tokenRoleId != Models.User.RoleMap.Admin || user.Role == Models.User.RoleMap.Admin)
+        if (user.Role != Models.User.RoleMap.Admin || user.Role == Models.User.RoleMap.Admin)
         {
             if (tokenUserId != id)
                 return BadRequest("You can't delete another user");
