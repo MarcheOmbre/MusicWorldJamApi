@@ -12,7 +12,7 @@ namespace WorldMusicJam.Controllers;
 [Route("[controller]")]
 public class AuthentificationController(IConfiguration configuration, IUserRepository userRepository) : ControllerBase
 {
-    private static readonly TimeSpan LoginTokenTimeSpan = new(0, 1, 0, 0);
+    private static readonly TimeSpan LoginTokenTimeSpan = new(1, 0, 0, 0);
     private static readonly TimeSpan PasswordForgotTokenTimeSpan = new(0, 0, 5, 0);
 
 

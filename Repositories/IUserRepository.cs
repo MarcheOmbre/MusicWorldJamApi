@@ -17,5 +17,7 @@ public interface IUserRepository
 
     public bool Remove<T>(int id) where T : class;
 
+    public T[] ExecuteStoreProcedure<T>(string storedProcedure, params Tuple<string, object>[] parameters);
+
     public bool SaveChanges();
 }

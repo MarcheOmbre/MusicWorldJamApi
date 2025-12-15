@@ -49,44 +49,13 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
             return false;
         }
         
-        var invitationsToDelete = userRepository.GetAll<GroupInvitation>(x => x.GroupId == id);
-        foreach (var groupInvitation in invitationsToDelete) 
-            userRepository.Remove<GroupInvitation>(groupInvitation.Id);
-        
-        var userGroupJoinsToDelete = userRepository.GetAll<UserGroupJoin>(x => x.GroupId == id);
-        foreach (var userGroupJoin in userGroupJoinsToDelete) 
-            userRepository.Remove<UserGroupJoin>(userGroupJoin.Id);
-        
-        var jamGroupJoinsToDelete = userRepository.GetAll<JamGroupJoin>(x => x.GroupId == id);
-        foreach (var userGroupJoin in jamGroupJoinsToDelete) 
-            userRepository.Remove<JamGroupJoin>(userGroupJoin.Id);
-        
-        var commentsToDelete = userRepository.GetAll<GroupComment>(x => x.GroupId == id);
-        foreach (var comment in commentsToDelete)
-            userRepository.Remove<GroupComment>(comment.Id);
-
-        if ((invitationsToDelete.Count > 0 ||
-             userGroupJoinsToDelete.Count > 0 || 
-             jamGroupJoinsToDelete.Count > 0 ||
-             commentsToDelete.Count > 0)  && 
-            !userRepository.SaveChanges())
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupDelete", new Tuple<string, object>("id", id));
+        if (result.Length <= 0 || result[0] != 1)
         {
-            error = "An error occured while deleting the group from join tables";
+            error = "An error occured while deleting the music";
             return false;
         }
         
-        foreach (var musicId in MusicController.GetGroupMusicsIdsInternal(userRepository, id))
-        {
-            if(!MusicController.TryDeleteInternal(userRepository, musicId, out error))
-                return false;
-        }
-        
-        if (!userRepository.Remove<Group>(id) || !userRepository.SaveChanges())
-        {
-            error = "An error occured while deleting the group";
-            return false;
-        }
-
         return true;
     }
     

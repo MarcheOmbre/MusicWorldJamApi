@@ -1,4 +1,5 @@
 ﻿using System.Linq.Expressions;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using WebApplication1.Repositories;
 using WorldMusicJam.Contexts;
@@ -76,5 +77,23 @@ public class UserRepositoryEntityFramework(IConfiguration configuration) : IUser
         return false;
     }
 
+    public T[] ExecuteStoreProcedure<T>(string storedProcedure, Tuple<string, object>[] parameters)
+    {
+        var queryString = storedProcedure;
+        var sqlParameters = new object[parameters.Length];
+
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            if (i > 0)
+                queryString += ",";
+         
+            queryString += " @" + parameters[i].Item1;
+            sqlParameters[i] = new SqlParameter("@" + parameters[i].Item1, parameters[i].Item2);
+        }
+        
+        Console.WriteLine(queryString);
+        return context.Database.SqlQueryRaw<T>(queryString, sqlParameters).ToArray();
+    }
+    
     public bool SaveChanges() => context.SaveChanges() > 0;
 }

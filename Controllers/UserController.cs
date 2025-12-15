@@ -106,47 +106,10 @@ public class UserController(IUserRepository userRepository) : ControllerBase
                 return BadRequest("You can't delete another user");
         }
         
-        var groupInvitationsToDelete = userRepository.GetAll<GroupInvitation>(x => x.UserId == id);
-        foreach (var groupInvitation in groupInvitationsToDelete)
-            userRepository.Remove<GroupInvitation>(groupInvitation.Id);
+        var result = userRepository.ExecuteStoreProcedure<int>("dbo.spUserDelete", new Tuple<string, object>("id", id));
+        if (result.Length <= 0 || result[0] != 1)
+            return BadRequest("An error occured while deleting the user");
         
-        var notationsToDelete = userRepository.GetAll<Notation>(x => x.UserId == id);
-        foreach (var notation in notationsToDelete)
-            userRepository.Remove<Notation>(notation.Id);
-        
-        var musicCommentsToDelete = userRepository.GetAll<MusicComment>(x => x.UserId == id);
-        foreach (var musicComment in musicCommentsToDelete)
-            userRepository.Remove<MusicComment>(musicComment.Id);
-        
-        var groupCommentsToDelete = userRepository.GetAll<GroupComment>(x => x.UserId == id);
-        foreach (var groupComment in groupCommentsToDelete)
-            userRepository.Remove<GroupComment>(groupComment.Id);
-        
-        if((groupInvitationsToDelete.Count > 0 || 
-            notationsToDelete.Count > 0 || 
-            musicCommentsToDelete.Count > 0 ||
-            groupCommentsToDelete.Count > 0) 
-           && !userRepository.SaveChanges())
-            return BadRequest("An error occured when deleting the user id from join tables");
-            
-        foreach (var groupId in GroupController.GetMembersInternal(userRepository, id))
-        {
-            if (!userRepository.TryGetById<Group>(groupId, out var group))
-                continue;
-            
-            if (group.UserId != id && !GroupController.TryRemoveMemberInternal(userRepository, id, groupId, out var removeMemberError))
-                return BadRequest(removeMemberError);
-            
-            if (group.UserId == id && !GroupController.TryDeleteInternal(userRepository, groupId, out var removeGroupError))
-                return BadRequest(removeGroupError);
-        }
-
-        if (!userRepository.Remove<User>(id) || !userRepository.SaveChanges())
-            return BadRequest("Cannot delete the user");
-
-        if (!userRepository.Remove<AuthentificationUser>(id) || !userRepository.SaveChanges())
-            return BadRequest("Cannot delete the authentification user");
-
         return Ok("User deleted");
     }
 

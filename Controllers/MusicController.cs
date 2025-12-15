@@ -96,40 +96,12 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
         return true;
     }
 
-    internal static bool TryDeleteInternal(IUserRepository userRepository, int id, out string error)
+    private static bool TryDeleteInternal(IUserRepository userRepository, int id, out string error)
     {
-        if(userRepository == null)
-            throw new ArgumentNullException(nameof(userRepository));
-        
         error = string.Empty;
 
-        var groupMusicJoinsToDelete = userRepository.GetAll<GroupMusicJoin>(x => x.MusicId == id);
-        foreach (var groupMusicJoin in groupMusicJoinsToDelete)
-            userRepository.Remove<GroupMusicJoin>(groupMusicJoin.Id);
-
-        var jamMusicJoinsToDelete = userRepository.GetAll<JamMusicJoin>(x => x.MusicId == id);
-        foreach (var jamMusicJoin in jamMusicJoinsToDelete)
-            userRepository.Remove<JamMusicJoin>(jamMusicJoin.Id);
-        
-        var notationsToDelete = userRepository.GetAll<Notation>(x => x.MusicId == id);
-        foreach (var notation in notationsToDelete)
-            userRepository.Remove<Notation>(notation.Id);
-        
-        var commentsToDelete = userRepository.GetAll<MusicComment>(x => x.MusicId == id);
-        foreach (var comment in commentsToDelete)
-            userRepository.Remove<MusicComment>(comment.Id);
-
-        if ((groupMusicJoinsToDelete.Count > 0 || 
-             jamMusicJoinsToDelete.Count > 0 ||
-             notationsToDelete.Count > 0 ||
-             commentsToDelete.Count > 0) 
-            && !userRepository.SaveChanges())
-        {
-            error = "An error occured while deleting the music from join tables";
-            return false;
-        }
-
-        if (!userRepository.Remove<Music>(id) || !userRepository.SaveChanges())
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spMusicDelete", new Tuple<string, object>("id", id));
+        if (result.Length <= 0 || result[0] != 1)
         {
             error = "An error occured while deleting the music";
             return false;

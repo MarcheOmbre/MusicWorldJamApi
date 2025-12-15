@@ -10,7 +10,6 @@ namespace WorldMusicJam.Helpers;
 public static class TokenHelper
 {
     private const string UserKey = "UserId";
-    private const string RoleKey = "Role";
     
     internal static string CreateToken(IConfiguration configuration,int value, TimeSpan timeSpan)
     {

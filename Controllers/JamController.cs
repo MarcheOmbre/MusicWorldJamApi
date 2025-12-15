@@ -237,28 +237,16 @@ public class JamController(IUserRepository userRepository) : ControllerBase
         if(user.Role != Models.User.RoleMap.Admin)
             return Unauthorized();
         
-        var joinGroupsToDelete = userRepository.GetAll<JamGroupJoin>(x => x.JamId == id);
-        foreach (var jamMusicJoin in joinGroupsToDelete) 
-            userRepository.Remove<JamGroupJoin>(jamMusicJoin.Id);
+        if(!userRepository.TryGetById<Jam>(id, out _))
+            return NotFound();
         
-        var joinMusicsToDelete = userRepository.GetAll<JamMusicJoin>(x => x.JamId == id);
-        foreach (var jamMusicJoin in joinMusicsToDelete) 
-            userRepository.Remove<JamMusicJoin>(jamMusicJoin.Id);
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spJamDelete", new Tuple<string, object>("id", id));
+        if (result.Length <= 0 || result[0] != 1)
+        {
+            return BadRequest("An  error occured while delete the jam");
+        }
         
-        var notationsToDelete = userRepository.GetAll<Notation>(x => x.JamId == id);
-        foreach (var notation in notationsToDelete)
-            userRepository.Remove<Notation>(notation.Id);
-        
-        if((joinMusicsToDelete.Count > 0 || 
-            joinGroupsToDelete.Count > 0 ||
-            notationsToDelete.Count > 0)
-           && !userRepository.SaveChanges())
-            return BadRequest("An error occured when deleting the jam id from jamGroupJoin, jamMusicJoin and notation tables");
-        
-        if(userRepository.Remove<Jam>(id) && userRepository.SaveChanges())
-            return Ok("Jam deleted");
-        
-        return NotFound("Jam not found");
+        return Ok("Deleted");
     }
 
     #endregion
