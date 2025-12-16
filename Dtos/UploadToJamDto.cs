@@ -12,7 +12,7 @@ public class UploadToJamDto
 
     [MaxLength(Int32.MaxValue)] public string Lyrics { get; init; } = string.Empty;
 
-    [MaxLength(2048)] public string FileUrl { get; init; } = string.Empty;
+    [MaxLength(1700)] public string FileUrl { get; init; } = string.Empty;
 
     public int GroupId { get; init; }
 }

@@ -17,46 +17,13 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         
         return userRepository.GetAll<UserGroupJoin>(x => x.GroupId == id).Select(x => x.UserId);
     }
-
-    internal static bool TryRemoveMemberInternal(IUserRepository userRepository, int memberId, int id, out string error)
-    {
-        if(userRepository == null)
-            throw new ArgumentNullException(nameof(userRepository));
-        
-        error = string.Empty;
-        
-        var userGroupJoinToDelete = userRepository.Get<UserGroupJoin>(x => x.GroupId == id && x.UserId == memberId);
-        if (userGroupJoinToDelete is null)
-        {
-            error = "User is not a member of this group";
-            return false;
-        }
-        
-        userRepository.Remove<UserGroupJoin>(userGroupJoinToDelete.Id);
-        return userRepository.SaveChanges();
-    }
     
-    internal static bool TryDeleteInternal(IUserRepository userRepository, int id, out string error)
+    internal static IEnumerable<int> GetMusicsInternal(IUserRepository userRepository, int groupId)
     {
-        if(userRepository == null)
+        if (userRepository == null)
             throw new ArgumentNullException(nameof(userRepository));
-        
-        error = string.Empty;
 
-        if (!userRepository.TryGetById<Group>(id, out _))
-        {
-            error = "Group not found";
-            return false;
-        }
-        
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupDelete", new Tuple<string, object>("id", id));
-        if (result.Length <= 0 || result[0] != 1)
-        {
-            error = "An error occured while deleting the music";
-            return false;
-        }
-        
-        return true;
+        return userRepository.GetAll<GroupMusicJoin>(x => x.GroupId == groupId).Select(x => x.MusicId);
     }
     
     #region Gets
@@ -145,31 +112,26 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
 
-        var groups = userRepository.GetAll<Group>(null);
-        
-        if (groups.Any(group => group.Name == groupDto.Name))
-            return BadRequest("Group already exists");
-        
-        if(groups.Any(group => group.PictureUrl == groupDto.PictureUrl))
-            return BadRequest("Cannot share the same picture url");
-        
-        var group = new Group
-        {
-            Name = groupDto.Name,
-            UserId = tokenUserId,
-            Description = groupDto.Description,
-            PictureUrl = groupDto.PictureUrl
-        };
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupCreate",
+            new Tuple<string, object>("name", groupDto.Name),
+            new Tuple<string, object>("pictureUrl", groupDto.PictureUrl),
+            new Tuple<string, object>("description", groupDto.Description),
+            new Tuple<string, object>("userId", tokenUserId));
 
-        if (userRepository.Add(group) && userRepository.SaveChanges())
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
         {
-            userRepository.Add(new UserGroupJoin { UserId = tokenUserId, GroupId = group.Id });
-         
-            if(userRepository.SaveChanges()) 
-                return Ok("Group created");   
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("User doesn't exist");
+            case 3:
+                return Unauthorized();
+            case 0:
+                return Ok("Group created");
+            default:
+                return BadRequest("An unexpected error occured");
         }
-        
-        return NotFound("An error occured while creating the group");
     }
     
     [HttpPut("SendInvitation")]
@@ -180,26 +142,29 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        if(!userRepository.TryGetById<Group>(groupId, out var group))
-            return NotFound("Group not found");
-        
-        if(group.UserId != tokenUserId)
-            return BadRequest("You are not the owner of this group");
-        
-        if(group.UserId == userId)
-            return BadRequest("You cannot invite yourself");
-        
-        if(userRepository.Get<User>(x => x.Id != userId) is null)
-            return BadRequest("User not found");
-        
-        if(userRepository.Get<GroupInvitation>(x => x.GroupId == groupId && x.UserId == userId) is not null)
-            return BadRequest("You have already invited this user");
-        
-        userRepository.Add(new GroupInvitation { GroupId = groupId, UserId = userId });
-        if(!userRepository.SaveChanges())
-            return BadRequest("An error occured while inviting the user");
-        
-        return Ok("Invited");
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupSendInvitation",
+            new Tuple<string, object>("memberId", userId),
+            new Tuple<string, object>("groupId", groupId),
+            new Tuple<string, object>("userId", tokenUserId));
+
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
+        {
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("You can't invite a user that is already a member of the group");
+            case 3:
+                return BadRequest("The user doesn't exist");
+            case 4:
+                return BadRequest("The group doesn't exist or you don't have permission");
+            case 5:
+                return BadRequest("An invitation already exists to this user from this group");
+            case 0:
+                return Ok("Invitation sent");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
     
     [HttpPut("AddComment")]
@@ -210,26 +175,30 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        if(!userRepository.TryGetById<Group>(commentGroupDto.GroupId, out var music))
-            return BadRequest("Group not found");
+        if(string.IsNullOrEmpty(commentGroupDto.Comment))
+            return BadRequest("Comment is empty");
         
-        var members = GetMembersInternal(userRepository, commentGroupDto.GroupId);
-        
-        if(members.Contains(tokenUserId))
-            return BadRequest("You cannot comment your own group");
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupAddComment",
+            new Tuple<string, object>("groupId", commentGroupDto.GroupId),
+            new Tuple<string, object>("comment", commentGroupDto.Comment),
+            new Tuple<string, object>("userId", tokenUserId));
 
-        if(userRepository.Get<GroupComment>(x => x.GroupId == commentGroupDto.GroupId && x.UserId == tokenUserId) is not null)
-            return BadRequest("You already commented this music");
-        
-        if(!userRepository.Add(new GroupComment
-           {
-               GroupId = commentGroupDto.GroupId, 
-               UserId = tokenUserId, 
-               Comment = commentGroupDto.Comment
-           }) || !userRepository.SaveChanges())
-            return BadRequest("An error occured while adding the comment");
-        
-        return Ok("Comment added");
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
+        {
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("You do not have permission or the group doesn't exist");
+            case 3:
+                return BadRequest("You can't send a comment to your own group");
+            case 4:
+                return BadRequest("You already sent a comment to this group");
+            case 0:
+                return Ok("Comment sent");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
     
     #endregion
@@ -245,22 +214,22 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        if(!userRepository.TryGetById<Group>(groupId, out _))
-            return NotFound("Group not found");
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupAcceptInvitation",
+            new Tuple<string, object>("groupId", groupId),
+            new Tuple<string, object>("userId", tokenUserId));
 
-        var invitation = userRepository.Get<GroupInvitation>(x => x.GroupId == groupId && x.UserId == tokenUserId);
-        if(invitation is null)
-            return BadRequest("You have not been invited to this group");
-        
-        userRepository.Add(new UserGroupJoin { UserId = tokenUserId, GroupId = groupId });
-        if(!userRepository.SaveChanges())
-            return BadRequest("An error occured while adding the user to the group");
-        
-        userRepository.Remove<GroupInvitation>(invitation.Id);
-        if(!userRepository.SaveChanges())
-            return BadRequest("An error occured while removing the invitation");
-        
-        return Ok("Joined");
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
+        {
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("No invitation exists for you from this group");
+            case 0:
+                return Ok("Group joined");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
     
     #endregion
@@ -273,20 +242,25 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult RemoveComment(int commentId)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
-            !userRepository.TryGetById<User>(tokenUserId, out var user))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        if(!userRepository.TryGetById<GroupComment>(commentId, out var comment))
-            return BadRequest("Comment not found");
-        
-        if(user.Role != Models.User.RoleMap.Admin && comment.UserId != tokenUserId)
-            return BadRequest("You are not the owner of this comment");
-        
-        if(!userRepository.Remove<GroupComment>(commentId) || !userRepository.SaveChanges())
-            return BadRequest("An error occured while deleting the comment");
-        
-        return Ok("Comment deleted");
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupDeleteComment",
+            new Tuple<string, object>("commentId", commentId),
+            new Tuple<string, object>("userId", tokenUserId));
+
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
+        {
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("The comment doesn't exist or you don't have permission");
+            case 0:
+                return Ok("Comment deleted");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
     
     [HttpDelete("Delete")]
@@ -297,47 +271,56 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
             !userRepository.TryGetById<User>(tokenUserId, out var user))
             return Unauthorized();
-        
-        var userId = tokenUserId;
-        if(!userRepository.TryGetById<Group>(id, out var group))
-            return NotFound("Group not found");
 
-        if (user.Role != Models.User.RoleMap.Admin)
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupDelete",
+            new Tuple<string, object>("groupId", id),
+            new Tuple<string, object>("userId", user.Id));
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        
+        switch (resultCode)
         {
-            if (group.UserId != userId)
-            {
-                return BadRequest("You are not the owner of this group");
-            }
+            case 1 :
+                return BadRequest("One of the parameters is null");
+            case 2 :
+                return BadRequest("The group doesn't exist or you do not have permission");
+            case 0 :
+                return Ok("Group deleted");
+            default:
+                return BadRequest("An unexpected error occured");
         }
-        
-        if(!TryDeleteInternal(userRepository, id, out var error))
-            return BadRequest(error);
-        
-        return Ok("Group deleted");
     }
-    
+
     [HttpDelete("DeleteMember")]
     [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult DeleteMember(int memberId, int id)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
-        
-        if(!userRepository.TryGetById<Group>(id, out var group))
-            return NotFound("Group not found");
-        
-        if(group.UserId != tokenUserId)
-            return BadRequest("You are not the owner of this group");
 
-        if (group.UserId == memberId)
-            return BadRequest("You cannot delete the owner of the group, please delete the group instead");
-        
-        if(!TryRemoveMemberInternal(userRepository, memberId, id, out var error))
-            return BadRequest(error);
-        
-        return Ok("Group member deleted");
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupDeleteMember",
+            new Tuple<string, object>("memberId", memberId),
+            new Tuple<string, object>("groupId", id),
+            new Tuple<string, object>("userId", tokenUserId));
+
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
+        {
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("You do not have permission to delete this member");
+            case 3:
+                return BadRequest(
+                    "You are the owner of the group, you can't remove yourself, please delete the group instead");
+            case 4:
+                return BadRequest("The member doesn't exist");
+            case 0:
+                return Ok("Member deleted from the group");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
-    
+
     #endregion
 }

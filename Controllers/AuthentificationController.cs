@@ -49,44 +49,31 @@ public class AuthentificationController(IConfiguration configuration, IUserRepos
         if (userRegistrationDto.Password != userRegistrationDto.PasswordConfirmation)
             return BadRequest("Passwords don't match");
 
-
-        if (userRepository
-            .GetAll<AuthentificationUser>(authentificationUser =>
-                authentificationUser.Email == userRegistrationDto.Email).Any())
-            return BadRequest("Email already registered");
-
-        var users = userRepository.GetAll<User>(null);
-        if (users.Any(user => user.Name == userRegistrationDto.Name))
-            return BadRequest("Name already registered");
-
-        if (users.Any(x => x.PictureUrl == userRegistrationDto.PictureUrl))
-            return BadRequest("Cannot share the same picture url");
-
         var salt = PasswordHelper.GenerateSalt();
         var passwordHash = PasswordHelper.GetPasswordHash(configuration, userRegistrationDto.Password, salt);
 
-        var authentificationUser = new AuthentificationUser
+        var result = userRepository.ExecuteStoreProcedure<int>("dbo.spUserCreate",
+            new Tuple<string, object>("email", userRegistrationDto.Email),
+            new Tuple<string, object>("passwordHash", passwordHash),
+            new Tuple<string, object>("passwordSalt", salt),
+            new Tuple<string, object>("name", userRegistrationDto.Name),
+            new Tuple<string, object>("pictureUrl", userRegistrationDto.PictureUrl),
+            new Tuple<string, object>("pictureUrl", userRegistrationDto.Description));
+
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
         {
-            Email = userRegistrationDto.Email,
-            PasswordHash = passwordHash,
-            PasswordSalt = salt
-        };
-
-        if (!userRepository.Add(authentificationUser) || !userRepository.SaveChanges())
-            return BadRequest("An error occured while registering the authentification user");
-
-        // Get the authentification user id
-        if (!UserController.CreateInternal(userRepository, new CreateUserDto
-            {
-                Id = authentificationUser.Id,
-                Name = userRegistrationDto.Name,
-                PictureUrl = userRegistrationDto.PictureUrl,
-                Description = userRegistrationDto.Description,
-                Email = userRegistrationDto.Email
-            }, out var error))
-            return BadRequest(error);
-
-        return Ok("User registered");
+            case 1 :
+                return BadRequest("One of the parameters is null");
+            case 2 :
+                return BadRequest("Email already registered");
+            case 3 :
+                return BadRequest("Name already registered");
+            case 0 :
+                return Ok("User created");
+            default:
+                return BadRequest("An unexpected error occured when subscribing the user");
+        }
     }
 
     /// <reponse code="200">User logged</reponse>

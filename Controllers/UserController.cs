@@ -12,37 +12,6 @@ namespace WorldMusicJam.Controllers;
 [Route("[controller]")]
 public class UserController(IUserRepository userRepository) : ControllerBase
 {
-    internal static bool CreateInternal(IUserRepository userRepository, CreateUserDto createUserDto, out string error)
-    {
-        if(userRepository == null)
-            throw new ArgumentNullException(nameof(userRepository));
-        
-        error = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(createUserDto.Name))
-        {
-            error = "Name can't be null";
-            return false;
-        }
-
-        var user = new User
-        {
-            Id = createUserDto.Id,
-            Name = createUserDto.Name,
-            PictureUrl = createUserDto.PictureUrl,
-            Description = createUserDto.Description,
-            Role = Models.User.RoleMap.User
-        };
-
-        if (!userRepository.Add(user) || !userRepository.SaveChanges())
-        {
-            error = "An error occured while adding the user";
-            return false;
-        }
-
-        return true;
-    }
-
     #region Gets
     
     [HttpGet("Get")]
@@ -99,18 +68,25 @@ public class UserController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
             !userRepository.TryGetById<User>(tokenUserId, out var user))
             return Unauthorized();
+
+        var result = userRepository.ExecuteStoreProcedure<int>("dbo.spUserDelete",
+            new Tuple<string, object>("deleteUserId", id),
+            new Tuple<string, object>("userId", user.Id));
         
-        if (user.Role != Models.User.RoleMap.Admin || user.Role == Models.User.RoleMap.Admin)
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
         {
-            if (tokenUserId != id)
-                return BadRequest("You can't delete another user");
+            case 1 :
+                return BadRequest("One of the parameters is null");
+            case 2 :
+                return BadRequest("The user does not exist");
+            case 3 :
+                return BadRequest("You do not have the permission to delete this user");
+            case 0 :
+                return Ok("User deleted");
+            default:
+                return BadRequest("An unexpected error occured");
         }
-        
-        var result = userRepository.ExecuteStoreProcedure<int>("dbo.spUserDelete", new Tuple<string, object>("id", id));
-        if (result.Length <= 0 || result[0] != 1)
-            return BadRequest("An error occured while deleting the user");
-        
-        return Ok("User deleted");
     }
 
     #endregion

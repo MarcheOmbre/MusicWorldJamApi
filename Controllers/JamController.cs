@@ -82,13 +82,13 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Create(CreateJamDto createJamDto)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) ||
             !userRepository.TryGetById<User>(tokenUserId, out var user))
             return Unauthorized();
         
         if(user.Role != Models.User.RoleMap.Admin)
             return Unauthorized();
-        
+
         if(string.IsNullOrWhiteSpace(createJamDto.Title))
             return BadRequest("Title is empty");
         if (string.IsNullOrWhiteSpace(createJamDto.Thema))
@@ -98,19 +98,29 @@ public class JamController(IUserRepository userRepository) : ControllerBase
         if(createJamDto.VoteEndTime < createJamDto.UploadEndTime)
             return BadRequest("Vote end time is before upload end time");
         
-        var jam = new Jam
-        {
-            Title = createJamDto.Title,
-            Thema = createJamDto.Thema,
-            CreatedTime = DateTime.Now,
-            UploadEndTime = createJamDto.UploadEndTime,
-            VoteEndTime = createJamDto.VoteEndTime,
-        };
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spJamCreate",
+            new Tuple<string, object>("title", createJamDto.Title),
+            new Tuple<string, object>("thema", createJamDto.Thema),
+            new Tuple<string, object>("uploadEndTime", createJamDto.UploadEndTime),
+            new  Tuple<string, object>("voteEndTime", createJamDto.VoteEndTime),
+            new Tuple<string, object>("userId", tokenUserId));
 
-        if (userRepository.Add(jam) && userRepository.SaveChanges())
-            return Ok("Jam added");
-        
-        return NotFound("An error occured while adding the music");
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
+        {
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("Upload End Time or Vote End time is incorrect : Created Time < Upload End Time < Vote End Time");
+            case 3:
+                return BadRequest("You don't have the permission");
+            case 4:
+                return BadRequest("The Jam title or thema already exists");
+            case 0:
+                return Ok("Jam created");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
     
     [HttpPut("Subscribe")]
@@ -121,26 +131,27 @@ public class JamController(IUserRepository userRepository) : ControllerBase
         if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        if(!userRepository.TryGetById<Jam>(id, out var jam))
-            return BadRequest("Jam not found");
-        
-        if(DateTime.Now > jam.UploadEndTime)
-            return BadRequest("Jam is over");
-        
-        if(!userRepository.TryGetById<Group>(groupId, out var group))
-            return BadRequest("Group not found");
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spJamSubscribe",
+            new Tuple<string, object>("jamId", id),
+            new Tuple<string, object>("groupId", groupId),
+            new Tuple<string, object>("uploadEndTime", tokenUserId));
 
-        if(group.UserId != tokenUserId)
-            return BadRequest("You are not the owner of this group");
-        
-        if (userRepository.Get<JamGroupJoin>(x => x.JamId == id && x.GroupId == groupId) != null)
-            return BadRequest("The group is already subscribed to this jam");
-        
-        if(!userRepository.Add(new JamGroupJoin { JamId = id, GroupId = groupId }) || 
-           !userRepository.SaveChanges())
-            return BadRequest("An error occured while subscribing the group to the jam");
-        
-        return Ok("Subscribed");
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
+        {
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("The jam doesn't exist or the Upload session is already finished");
+            case 3:
+                return BadRequest("The group doesn't exist or you don't have the permission");
+            case 4:
+                return BadRequest("The group is already subscribed to this jam");
+            case 0:
+                return Ok("Subscribed");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
     
     [HttpPut("Upload")]
@@ -151,23 +162,37 @@ public class JamController(IUserRepository userRepository) : ControllerBase
         if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        if(!userRepository.TryGetById<Jam>(uploadToJamDto.JamId, out var jam))
-            return BadRequest("Jam not found");
-        
-        if(DateTime.Now > jam.UploadEndTime)
-            return BadRequest("Jam is over");
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spJamUpload",
+            new Tuple<string, object>("jamId", uploadToJamDto.JamId),
+            new Tuple<string, object>("title", uploadToJamDto.Title),
+            new Tuple<string, object>("description", uploadToJamDto.Description),
+            new Tuple<string, object>("lyrics", uploadToJamDto.Lyrics),
+            new Tuple<string, object>("fileUrl", uploadToJamDto.FileUrl),
+            new Tuple<string, object>("groupId", uploadToJamDto.GroupId),
+            new Tuple<string, object>("userId", tokenUserId));
 
-        if (userRepository.Get<JamGroupJoin>(jamGroupJoin => jamGroupJoin.GroupId != uploadToJamDto.GroupId) != null)
-            return BadRequest("The group is not subscribed to this jam");
-        
-        if(!MusicController.TryAddInternal(userRepository, tokenUserId, uploadToJamDto, out var error, out var music))
-            return BadRequest(error);
-        
-        if (!userRepository.Add(new JamMusicJoin { JamId = uploadToJamDto.JamId, MusicId = music.Id }) ||
-            !userRepository.SaveChanges())
-            return BadRequest("An error occured while adding the music to join tables");
-        
-        return Ok("Uploaded");
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
+        {
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("The group doesn't exist or you don't have the permission");
+            case 3:
+                return BadRequest("The jam doesn't exist or the Upload session is already finished");
+            case 4:
+                return BadRequest("The group is not subscribed to this jam");
+            case 5:
+                return BadRequest("The group already uploaded a music for the jam, you can delete the music to upload a new one");
+            case 6:
+                return BadRequest("A music with the same file Url already exists");
+            case 7:
+                return BadRequest("A music with the same title already exists for this group");
+            case 0:
+                return Ok("Uploaded");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
 
     [HttpPut("Note")]
@@ -178,46 +203,37 @@ public class JamController(IUserRepository userRepository) : ControllerBase
         if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        if(!userRepository.TryGetById<Jam>(notationDto.JamId, out var jam))
-            return BadRequest("Jam not found");
-        
-        if(DateTime.Now < jam.UploadEndTime)
-            return BadRequest("Jam vote is not open yet");
-        
-        if(DateTime.Now > jam.VoteEndTime)
-            return BadRequest("Jam is over");
-        
-        var jamMusicJoin = userRepository.Get<JamMusicJoin>(x => x.JamId == notationDto.JamId && x.MusicId == notationDto.MusicId);
-        if(jamMusicJoin is null)
-            return BadRequest("Music is not uploaded to this jam");
-        
-        if(!userRepository.TryGetById<Music>(notationDto.MusicId, out var music))
-            return BadRequest("Music not found");
-        
-        var members = GroupController.GetMembersInternal(userRepository, music.GroupId);
-        
-        if(members.Contains(tokenUserId))
-            return BadRequest("You cannot vote for your own music");
-        
-        var userNotation = userRepository.Get<Notation>(x => x.JamId == notationDto.JamId && x.MusicId == notationDto.MusicId && x.UserId == tokenUserId);
-        if(userNotation != null)
-            return BadRequest("You already voted for this music");
-        
         if(notationDto.Note < MinNotation)
             notationDto.Note = MinNotation;
         if(notationDto.Note > MaxNotation)
             notationDto.Note = MaxNotation;
-        
-        if(!userRepository.Add(new Notation
+
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spJamNote",
+            new Tuple<string, object>("jamId", notationDto.JamId),
+            new Tuple<string, object>("musicId", notationDto.MusicId),
+            new Tuple<string, object>("note", notationDto.Note),
+            new Tuple<string, object>("userId", tokenUserId));
+
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        switch (resultCode)
         {
-            JamId = notationDto.JamId,
-            MusicId = notationDto.MusicId,
-            UserId = tokenUserId,
-            Note = notationDto.Note
-        }) || !userRepository.SaveChanges())
-            return BadRequest("An error occured while adding the notation");
-        
-        return Ok("Notation added");
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("The note should be bounded between 0 and 10");
+            case 3:
+                return BadRequest("The jam doesn't exist or the Vote session is already finished");
+            case 4:
+                return BadRequest("The music is not uploaded for this jam");
+            case 5:
+                return BadRequest("You already noted this music");
+            case 6:
+                return BadRequest("You can't vote for your own music");
+            case 0:
+                return Ok("Uploaded");
+            default:
+                return BadRequest("An unexpected error occured");
+        }
     }
 
     #endregion
@@ -231,22 +247,26 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     public IActionResult Delete(int id)
     {
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
-            !userRepository.TryGetById<User>(tokenUserId, out var user))
+            !userRepository.TryGetById<User>(tokenUserId, out var user)
+            || user.Role != Models.User.RoleMap.Admin)
             return Unauthorized();
         
-        if(user.Role != Models.User.RoleMap.Admin)
-            return Unauthorized();
-        
-        if(!userRepository.TryGetById<Jam>(id, out _))
-            return NotFound();
-        
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spJamDelete", new Tuple<string, object>("id", id));
-        if (result.Length <= 0 || result[0] != 1)
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spJamDelete",
+            new Tuple<string, object>("jamId", id),
+            new Tuple<string, object>("userId", tokenUserId));
+        var resultCode = result.Length > 0 ? result[0] : -1;
+
+        switch (resultCode)
         {
-            return BadRequest("An  error occured while delete the jam");
+            case 1:
+                return BadRequest("One of the parameters is null");
+            case 2:
+                return BadRequest("The jam doesn't exist or you don't have the permission to delete it");
+            case 0:
+                return Ok("Jam deleted");
+            default:
+                return BadRequest("An unexpected error occured");
         }
-        
-        return Ok("Deleted");
     }
 
     #endregion
