@@ -27,6 +27,7 @@ public class UserController(IUserRepository userRepository) : ControllerBase
 
         return Ok(new GetUserDto
         {
+            Id = user.Id,
             Name = user.Name,
             Description = user.Description,
             Role = user.Role,
@@ -44,6 +45,7 @@ public class UserController(IUserRepository userRepository) : ControllerBase
 
         var getUsersDtos = userRepository.GetAll<User>(null).Select(x => new GetUserDto
         {
+            Id = x.Id,
             Name = x.Name,
             Description = x.Description,
             Role = x.Role,

@@ -10,22 +10,6 @@ namespace WorldMusicJam.Controllers;
 [Route("[controller]")]
 public class GroupController(IUserRepository userRepository) : ControllerBase
 {
-    internal static IEnumerable<int> GetMembersInternal(IUserRepository userRepository, int id)
-    {
-        if(userRepository == null)
-            throw new ArgumentNullException(nameof(userRepository));
-        
-        return userRepository.GetAll<UserGroupJoin>(x => x.GroupId == id).Select(x => x.UserId);
-    }
-    
-    internal static IEnumerable<int> GetMusicsInternal(IUserRepository userRepository, int groupId)
-    {
-        if (userRepository == null)
-            throw new ArgumentNullException(nameof(userRepository));
-
-        return userRepository.GetAll<GroupMusicJoin>(x => x.GroupId == groupId).Select(x => x.MusicId);
-    }
-    
     #region Gets
     
     [HttpGet("GetUserGroups")]
@@ -33,18 +17,51 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetUserGroups(int userId)
     {
-        if(!TokenHelper.CheckToken(User, userRepository, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
 
-        var groups = new List<Group>();
-        foreach (var groupId in GetMembersInternal(userRepository, userId))
-        {
-            if (!userRepository.TryGetById<Group>(groupId, out var group))
-                continue;
-            
-            groups.Add(group);
-        }
-        return Ok(groups);
+        return Ok(userRepository.ExecuteStoreProcedure<Group>($"{Constants.MainSchema}.spUserGroupsGet",
+            new Tuple<string, object>("targetUserId", userId),
+            new Tuple<string, object>("userId", tokenUserId)));
+    }
+    
+    [HttpGet("GetMusics")]
+    [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
+    [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
+    public IActionResult GetMusics(int id)
+    {
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
+            return Unauthorized();
+
+        return Ok(userRepository.ExecuteStoreProcedure<Music>($"{Constants.MainSchema}.spGroupMusicsGet",
+            new Tuple<string, object>("groupId", id),
+            new Tuple<string, object>("userId", tokenUserId)));
+    }
+    
+    [HttpGet("GetMembers")]
+    [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
+    [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
+    public IActionResult GetMembers(int id)
+    {
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
+            return Unauthorized();
+
+        return Ok(userRepository.ExecuteStoreProcedure<GetUserDto>($"{Constants.MainSchema}.spGroupUsersGet",
+            new Tuple<string, object>("groupId", id),
+            new Tuple<string, object>("userId", tokenUserId)));
+    }
+    
+    [HttpGet("GetComments")]
+    [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
+    [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
+    public IActionResult GetComments(int id)
+    {
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
+            return Unauthorized();
+
+        return Ok(userRepository.ExecuteStoreProcedure<GroupComment>($"{Constants.MainSchema}.spGroupCommentsGet",
+            new Tuple<string, object>("groupId", id),
+            new Tuple<string, object>("userId", tokenUserId)));
     }
     
     [HttpGet("GetAll")]
@@ -56,44 +73,6 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
             return Unauthorized();
         
         return Ok(userRepository.GetAll<Group>(null));
-    }
-    
-    [HttpGet("GetMembers")]
-    [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
-    [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
-    public IActionResult GetMembers(int id)
-    {
-        if (!TokenHelper.CheckToken(User, userRepository, out _))
-            return Unauthorized();
-        
-        var memberIds = userRepository.GetAll<UserGroupJoin>(x => x.GroupId == id).Select(x => x.UserId).ToList();
-        if(!memberIds.Any()) 
-            return NotFound("No member found");
-        
-        var users = new List<User>();
-        foreach (var memberId in memberIds)
-        {
-            if(!userRepository.TryGetById<User>(memberId, out var user))
-                continue;
-            
-            users.Add(user);
-        }
-        
-        return Ok(users);
-    }
-    
-    [HttpGet("GetComments")]
-    [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
-    [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
-    public IActionResult GetComments(int id)
-    {
-        if (!TokenHelper.CheckToken(User, userRepository, out _))
-            return Unauthorized();
-        
-        if(!userRepository.TryGetById<Group>(id, out _))
-            return NotFound("Group not found");
-        
-        return Ok(userRepository.GetAll<GroupComment>(x => x.GroupId == id));
     }
     
     #endregion
@@ -142,7 +121,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupSendInvitation",
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupInvitationSend",
             new Tuple<string, object>("memberId", userId),
             new Tuple<string, object>("groupId", groupId),
             new Tuple<string, object>("userId", tokenUserId));
@@ -178,7 +157,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if(string.IsNullOrEmpty(commentGroupDto.Comment))
             return BadRequest("Comment is empty");
         
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupAddComment",
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupCommentAdd",
             new Tuple<string, object>("groupId", commentGroupDto.GroupId),
             new Tuple<string, object>("comment", commentGroupDto.Comment),
             new Tuple<string, object>("userId", tokenUserId));
@@ -214,7 +193,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupAcceptInvitation",
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupInvitationAccept",
             new Tuple<string, object>("groupId", groupId),
             new Tuple<string, object>("userId", tokenUserId));
 
@@ -245,7 +224,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupDeleteComment",
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupCommentDelete",
             new Tuple<string, object>("commentId", commentId),
             new Tuple<string, object>("userId", tokenUserId));
 
@@ -268,13 +247,12 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Delete(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) || 
-            !userRepository.TryGetById<User>(tokenUserId, out var user))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
 
         var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupDelete",
             new Tuple<string, object>("groupId", id),
-            new Tuple<string, object>("userId", user.Id));
+            new Tuple<string, object>("userId", tokenUserId));
         var resultCode = result.Length > 0 ? result[0] : -1;
         
         switch (resultCode)
@@ -298,7 +276,7 @@ public class GroupController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
 
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupDeleteMember",
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spGroupMemberDelete",
             new Tuple<string, object>("memberId", memberId),
             new Tuple<string, object>("groupId", id),
             new Tuple<string, object>("userId", tokenUserId));

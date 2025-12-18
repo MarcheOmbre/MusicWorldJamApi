@@ -14,26 +14,6 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
 {
     #region Gets
     
-    [HttpGet("GetGroupMusics")]
-    [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
-    [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
-    public IActionResult GetGroupMusics(int groupId)
-    {
-        if (!TokenHelper.CheckToken(User, userRepository, out _))
-            return Unauthorized();
-
-        var musics = new List<Music>();
-        foreach (var musicId in GroupController.GetMusicsInternal(userRepository, groupId))
-        {
-            if (!userRepository.TryGetById<Music>(musicId, out var music))
-                continue;
-
-            musics.Add(music);
-        }
-
-        return Ok(musics);
-    }
-    
     [HttpGet("GetAll")]
     [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
@@ -50,13 +30,12 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetComments(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
-        
-        if(!userRepository.TryGetById<Music>(id, out _))
-            return NotFound("Music not found");
-        
-        return Ok(userRepository.GetAll<MusicComment>(x => x.MusicId == id));
+
+        return Ok(userRepository.ExecuteStoreProcedure<MusicComment>($"{Constants.MainSchema}.spMusicCommentsGet",
+            new Tuple<string, object>("musicId", id),
+            new Tuple<string, object>("userId", tokenUserId)));
     }
     
     #endregion
@@ -75,7 +54,7 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
         if(string.IsNullOrEmpty(commentMusicDto.Comment))
             return BadRequest("Comment is empty");
         
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spMusicAddComment",
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spMusicCommentAdd",
             new Tuple<string, object>("musicId", commentMusicDto.MusicId),
             new Tuple<string, object>("comment", commentMusicDto.Comment),
             new Tuple<string, object>("userId", tokenUserId));
@@ -111,7 +90,7 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
         if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spMusicDeleteComment",
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spMusicCommentDelete",
             new Tuple<string, object>("commentId", commentId),
             new Tuple<string, object>("userId", tokenUserId));
 
@@ -134,13 +113,12 @@ public class MusicController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult Delete(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId) ||
-            !userRepository.TryGetById<User>(tokenUserId, out var user))
+        if (!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
-
+        
         var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spMusicDelete",
             new Tuple<string, object>("musicId", id),
-            new Tuple<string, object>("userId", user.Id));
+            new Tuple<string, object>("userId", tokenUserId));
         var resultCode = result.Length > 0 ? result[0] : -1;
 
         switch (resultCode)

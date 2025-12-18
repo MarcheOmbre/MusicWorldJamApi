@@ -1,6 +1,6 @@
 ﻿namespace WorldMusicJam.Dtos;
 
-public class NotationDto
+public class CreateNoteDto
 {
     public int JamId { get; set; }
     

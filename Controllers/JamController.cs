@@ -26,7 +26,7 @@ public class JamController(IUserRepository userRepository) : ControllerBase
             return Unauthorized();
         
         if(!userRepository.TryGetById<Jam>(id, out var jam))
-            return NotFound("No music found");
+            return NotFound("No jam found");
         
         return Ok(jam);
     }
@@ -47,29 +47,25 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
     public IActionResult GetGroups(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
 
-        if (!userRepository.TryGetById<Jam>(id, out _))
-            return NotFound("No jam found");
-
-        var groupIds = userRepository.GetAll<JamGroupJoin>(x => x.JamId == id).Select(x => x.GroupId);
-        return Ok(userRepository.GetAll<Group>(x => groupIds.Contains(x.Id)));
+        return Ok(userRepository.ExecuteStoreProcedure<Group>($"{Constants.MainSchema}.spJamGroupsGet",
+            new Tuple<string, object>("jamId", id),
+            new Tuple<string, object>("userId", tokenUserId)));
     }
     
     [HttpGet("GetMusics")]
     [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
-    public IActionResult GetMusics(int jamId)
+    public IActionResult GetMusics(int id)
     {
-        if (!TokenHelper.CheckToken(User, userRepository, out _))
+        if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
 
-        if (!userRepository.TryGetById<Jam>(jamId, out _))
-            return NotFound("No jam found");
-
-        var musicIds = userRepository.GetAll<JamMusicJoin>(x => x.JamId == jamId).Select(x => x.MusicId);
-        return Ok(userRepository.GetAll<Music>(x => musicIds.Contains(x.Id)));
+        return Ok(userRepository.ExecuteStoreProcedure<Music>($"{Constants.MainSchema}.spJamMusicsGet",
+            new Tuple<string, object>("jamId", id),
+            new Tuple<string, object>("userId", tokenUserId)));
     }
     
     #endregion
@@ -198,20 +194,20 @@ public class JamController(IUserRepository userRepository) : ControllerBase
     [HttpPut("Note")]
     [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
     [ProducesResponseType(statusCode: StatusCodes.Status404NotFound, Type = typeof(string))]
-    public IActionResult Note(NotationDto notationDto)
+    public IActionResult Note(CreateNoteDto createNoteDto)
     {
         if(!TokenHelper.CheckToken(User, userRepository, out var tokenUserId))
             return Unauthorized();
         
-        if(notationDto.Note < MinNotation)
-            notationDto.Note = MinNotation;
-        if(notationDto.Note > MaxNotation)
-            notationDto.Note = MaxNotation;
+        if(createNoteDto.Note < MinNotation)
+            createNoteDto.Note = MinNotation;
+        if(createNoteDto.Note > MaxNotation)
+            createNoteDto.Note = MaxNotation;
 
         var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.MainSchema}.spJamNote",
-            new Tuple<string, object>("jamId", notationDto.JamId),
-            new Tuple<string, object>("musicId", notationDto.MusicId),
-            new Tuple<string, object>("note", notationDto.Note),
+            new Tuple<string, object>("jamId", createNoteDto.JamId),
+            new Tuple<string, object>("musicId", createNoteDto.MusicId),
+            new Tuple<string, object>("note", createNoteDto.Note),
             new Tuple<string, object>("userId", tokenUserId));
 
         var resultCode = result.Length > 0 ? result[0] : -1;
