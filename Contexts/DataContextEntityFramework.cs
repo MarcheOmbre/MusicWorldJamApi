@@ -21,7 +21,7 @@ public class DataContextEntityFramework(IConfiguration configuration) : DbContex
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.Entity<User>().ToTable("Users", Constants.MainSchema).HasKey(user => user.Id);
-        modelBuilder.Entity<AuthentificationUser>().ToTable("Users", "AuthentificationSchema").HasKey(user => user.Id);
+        modelBuilder.Entity<AuthentificationUser>().ToTable("Users", Constants.AuthentificationSchema).HasKey(user => user.Id);
         modelBuilder.Entity<Group>().ToTable("Groups", Constants.MainSchema).HasKey(group => group.Id);
         modelBuilder.Entity<Music>().ToTable("Musics", Constants.MainSchema).HasKey(music => music.Id);
         modelBuilder.Entity<Jam>().ToTable("Jams", Constants.MainSchema).HasKey(jam => jam.Id);

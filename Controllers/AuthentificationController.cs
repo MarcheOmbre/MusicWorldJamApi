@@ -118,15 +118,45 @@ public class AuthentificationController(IConfiguration configuration, IUserRepos
             return BadRequest("The email is not valid");
         
         var userAuthentification = userRepository.Get<AuthentificationUser>(x => x.Email == email);
-        if (userAuthentification != null && userRepository.TryGetById<User>(userAuthentification.Id, out var user))
+        if (userAuthentification != null)
         {
-            var token = TokenHelper.CreateToken(configuration, user.Id, PasswordForgotTokenTimeSpan);
+            var token = TokenHelper.CreateToken(configuration, userAuthentification.Id, PasswordForgotTokenTimeSpan);
             
             // Send mail
-            EmailHelper.SendEmail(configuration, email, "Subject", token);
+            EmailHelper.SendEmail(configuration, email, "Reset your password", token);
         }
 
         return Ok("If the email exists, an email has been sent");
+    }
+    
+    [HttpPost("ResetPassword")]
+    [ProducesResponseType(statusCode: StatusCodes.Status400BadRequest, Type = typeof(string))]
+    [ProducesResponseType(statusCode: StatusCodes.Status200OK, Type = typeof(string))]
+    public IActionResult ResetPassword(ResetPasswordDto resetPasswordDto)
+    {
+        if (!TokenHelper.CheckToken(User, userRepository, out var id))
+            return Unauthorized();
+        
+        if (string.IsNullOrWhiteSpace(resetPasswordDto.Password))
+            return BadRequest("Password can't be null");
+        if (resetPasswordDto.Password != resetPasswordDto.PasswordConfirmation)
+            return BadRequest("Passwords don't match");
+
+        var salt = PasswordHelper.GenerateSalt();
+        var passwordHash = PasswordHelper.GetPasswordHash(configuration, resetPasswordDto.Password, salt);
+
+        var result = userRepository.ExecuteStoreProcedure<int>($"{Constants.AuthentificationSchema}.spUserPasswordReset",
+            new Tuple<string, object>("userId", id),
+            new Tuple<string, object>("passwordHash", passwordHash),
+            new Tuple<string, object>("passwordSalt", salt));
+
+        var resultCode = result.Length > 0 ? result[0] : -1;
+        return resultCode switch
+        {
+            1 => BadRequest("One of the parameters is null"),
+            0 => Ok("Password reset"),
+            _ => BadRequest("An unexpected error occured when subscribing the user")
+        };
     }
 
     #endregion
